@@ -15,11 +15,18 @@ const Navbar = () => {
   const dropdownRef = useRef(null);
 
   const handleDemoLogin = async () => {
+    const demoEmail = import.meta.env.VITE_DEMO_EMAIL;
+    const demoPassword = import.meta.env.VITE_DEMO_PASSWORD;
+    if (!demoEmail || !demoPassword) {
+      // No demo credentials configured — send to login page
+      navigate('/login');
+      return;
+    }
     try {
-      await login('demo@omniaid.ai', 'DemoUserPass123!');
+      await login(demoEmail, demoPassword);
       navigate('/dashboard');
     } catch {
-      navigate('/dashboard');
+      navigate('/login');
     }
   };
 

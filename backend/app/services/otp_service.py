@@ -67,7 +67,7 @@ def send_real_email_otp(recipient_email: str, otp_code: str) -> bool:
     if brevo_key:
         try:
             import httpx
-            sender_email = os.getenv("SMTP_FROM_EMAIL") or os.getenv("SMTP_USER") or "thezeroprof@gmail.com"
+            sender_email = os.getenv("SMTP_FROM_EMAIL") or os.getenv("SMTP_USER") or "noreply@sumscale.ai"
             res = httpx.post(
                 "https://api.brevo.com/v3/smtp/email",
                 headers={
