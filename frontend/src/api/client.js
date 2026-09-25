@@ -90,8 +90,8 @@ chatApiClient.interceptors.response.use(
 );
 
 // --- Auth Endpoints ---
-export const apiRegister = (email, password) =>
-  apiClient.post('/auth/register', { email, password });
+export const apiRegister = (email, password, fullName = '') =>
+  apiClient.post('/auth/register', { email, password, full_name: fullName });
 
 export const apiLogin = (email, password) =>
   apiClient.post('/auth/login', { email, password });

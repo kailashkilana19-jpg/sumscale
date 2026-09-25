@@ -77,11 +77,11 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const register = async (email, password) => {
+  const register = async (email, password, fullName = '') => {
     setLoading(true);
     setError(null);
     try {
-      await apiRegister(email, password);
+      await apiRegister(email, password, fullName);
       return await login(email, password);
     } catch (err) {
       if (err.message?.includes('Network') || !err.response) {
