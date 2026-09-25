@@ -35,12 +35,13 @@ def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
-def send_real_email_otp(recipient_email: str, otp_code: str) -> bool:
+def send_real_email_otp(recipient_email: str, otp_code: str) -> Tuple[bool, str]:
     """
     Dispatches a real HTML OTP email using:
-    1. Resend REST API (HTTPS Port 443 — 100% cloud reliable, free 3,000/mo)
-    2. Brevo REST API (HTTPS Port 443 — free 300/day)
+    1. Brevo REST API (HTTPS Port 443 — free 300/day to any recipient)
+    2. Resend REST API (HTTPS Port 443 — free 3,000/mo)
     3. SMTP Fallback (Gmail / Custom SMTP)
+    Returns (success: bool, status_message: str)
     """
     resend_key = os.getenv("RESEND_API_KEY")
     brevo_key = os.getenv("BREVO_API_KEY")
@@ -83,14 +84,14 @@ def send_real_email_otp(recipient_email: str, otp_code: str) -> bool:
                 timeout=8.0,
             )
             if res.status_code in (200, 201):
-                logger.info(f"✅ Real Email OTP delivered to {recipient_email} via Brevo REST API")
-                return True
+                logger.info(f"Real Email OTP delivered to {recipient_email} via Brevo REST API")
+                return True, "Email delivered successfully via Brevo."
             else:
-                logger.error(f"❌ Brevo API error ({res.status_code}): {res.text}")
+                logger.error(f"Brevo API error ({res.status_code}): {res.text}")
         except Exception as e:
-            logger.error(f"❌ Brevo API dispatch failed: {e}")
+            logger.error(f"Brevo API dispatch failed: {e}")
 
-    # 2. Try Resend REST API (HTTPS Port 443 — free 3,000/mo, requires verified domain for external recipients)
+    # 2. Try Resend REST API (HTTPS Port 443 — free 3,000/mo)
     if resend_key:
         try:
             import httpx
@@ -110,14 +111,22 @@ def send_real_email_otp(recipient_email: str, otp_code: str) -> bool:
                 timeout=8.0,
             )
             if res.status_code in (200, 201):
-                logger.info(f"✅ Real Email OTP delivered to {recipient_email} via Resend REST API")
-                return True
+                logger.info(f"Real Email OTP delivered to {recipient_email} via Resend REST API")
+                return True, "Email delivered successfully via Resend."
             elif res.status_code == 403:
-                logger.error(f"❌ Resend API 403 Forbidden: Resend unverified test key can ONLY send emails to your own account email. To send to any recipient, add a free BREVO_API_KEY in Render dashboard.")
+                try:
+                    err_json = res.json()
+                    err_msg = err_json.get("message", res.text)
+                except Exception:
+                    err_msg = res.text
+                logger.error(f"Resend API 403 Forbidden: {err_msg}")
+                return False, f"Resend API Error: {err_msg}"
             else:
-                logger.error(f"❌ Resend API error ({res.status_code}): {res.text}")
+                logger.error(f"Resend API error ({res.status_code}): {res.text}")
+                return False, f"Resend API error ({res.status_code}): {res.text}"
         except Exception as e:
-            logger.error(f"❌ Resend API dispatch failed: {e}")
+            logger.error(f"Resend API dispatch failed: {e}")
+            return False, f"Resend network connection failed: {e}"
 
     # 3. SMTP Fallback (Gmail / Custom SMTP)
     smtp_user = os.getenv("SMTP_USER")
@@ -138,8 +147,8 @@ def send_real_email_otp(recipient_email: str, otp_code: str) -> bool:
                 with smtplib.SMTP_SSL(smtp_host, 465, timeout=4.0) as server:
                     server.login(smtp_user, smtp_password)
                     server.sendmail(sender_email, recipient_email, msg.as_string())
-                logger.info(f"✅ Real Email OTP delivered to {recipient_email} via SSL")
-                return True
+                logger.info(f"Real Email OTP delivered to {recipient_email} via SSL")
+                return True, "Email delivered successfully via SMTP."
             except Exception as e:
                 logger.warning(f"Port 465 SSL failed for {recipient_email}: {e}. Retrying on Port 587 STARTTLS...")
 
@@ -148,13 +157,13 @@ def send_real_email_otp(recipient_email: str, otp_code: str) -> bool:
                 server.starttls()
                 server.login(smtp_user, smtp_password)
                 server.sendmail(sender_email, recipient_email, msg.as_string())
-            logger.info(f"✅ Real Email OTP delivered to {recipient_email} via STARTTLS")
-            return True
+            logger.info(f"Real Email OTP delivered to {recipient_email} via STARTTLS")
+            return True, "Email delivered successfully via SMTP."
         except Exception as e:
-            logger.error(f"❌ SMTP delivery failed for {recipient_email}: {e}")
+            logger.error(f"SMTP delivery failed for {recipient_email}: {e}")
+            return False, f"SMTP delivery failed: {e}"
 
-    logger.warning("⚠️ No valid email provider configured (RESEND_API_KEY, BREVO_API_KEY, or SMTP_USER). Email not sent.")
-    return False
+    return False, "No email provider configured. Please provide a valid RESEND_API_KEY in backend/.env"
 
 
 # Resilient in-memory OTP cache ensuring instant verification even if Atlas is unreachable
@@ -167,14 +176,20 @@ async def send_otp_identifier(
     purpose: str = "login"
 ) -> Dict[str, Any]:
     """
-    Generates 6-digit OTP, stores in memory cache & DB with 5-minute expiry, and dispatches email asynchronously.
+    Generates 6-digit OTP, dispatches real email via Resend, and stores in memory & DB.
     """
     clean_email = normalize_email(email)
     otp_code = generate_6digit_otp()
     now = datetime.datetime.now(datetime.timezone.utc)
     expires_at = now + datetime.timedelta(minutes=OTP_EXPIRATION_MINUTES)
 
-    # Store in memory cache immediately
+    # 1. Dispatch real email via Resend (or configured provider) synchronously so we can confirm delivery
+    sent_ok, send_msg = await asyncio.to_thread(send_real_email_otp, clean_email, otp_code)
+    if not sent_ok:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=send_msg)
+
+    # 2. Store in memory cache
     _otp_cache[clean_email] = {
         "otp_code": otp_code,
         "purpose": purpose,
@@ -212,16 +227,16 @@ async def send_otp_identifier(
                 pass
         asyncio.create_task(_bg_save_otp())
 
-    # Dispatch email asynchronously in background task
-    asyncio.create_task(asyncio.to_thread(send_real_email_otp, clean_email, otp_code))
-
     res = {
         "status": "success",
         "email": clean_email,
         "expires_in_seconds": OTP_EXPIRATION_MINUTES * 60,
         "real_sent": True,
-        "dev_otp": otp_code,  # Always included so users testing on unverified email domains can proceed instantly
     }
+
+    # Only include dev_otp in automated test environment
+    if os.getenv("ENVIRONMENT") == "test":
+        res["dev_otp"] = otp_code
 
     return res
 
@@ -241,11 +256,11 @@ async def verify_otp_identifier(
     if not code_clean:
         return False, "Please enter the 6-digit verification code."
 
-    # 1. Universal development bypass for local / testing
-    if code_clean in ("123456", "000000"):
+    # Automated test bypass only for test environment
+    if os.getenv("ENVIRONMENT") == "test" and code_clean in ("123456", "000000"):
         return True, clean_email
 
-    # 2. Check memory cache first
+    # 1. Check memory cache first
     cached = _otp_cache.get(clean_email)
     now = datetime.datetime.now(datetime.timezone.utc)
     if cached:
@@ -259,7 +274,7 @@ async def verify_otp_identifier(
             else:
                 return False, "OTP code has expired. Please request a new verification code."
 
-    # 3. Check MongoDB if reachable
+    # 2. Check MongoDB if reachable
     if db is not None:
         try:
             record = await asyncio.wait_for(
