@@ -45,7 +45,6 @@ dist/
 venv/
 env/
 ENV/
-.python-version
 pip-log.txt
 pip-delete-this-directory.txt
 
