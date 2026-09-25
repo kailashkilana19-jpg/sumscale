@@ -21,6 +21,7 @@ import shutil
 import uuid
 import logging
 from typing import Tuple, Set, Dict, Optional
+from pathlib import Path
 try:
     import magic
 except Exception:
