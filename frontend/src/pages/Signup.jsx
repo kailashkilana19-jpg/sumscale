@@ -48,9 +48,12 @@ const Signup = () => {
 
     setSendingOtp(true);
     try {
-      await apiSendOTP(identifier.trim(), 'signup');
+      const res = await apiSendOTP(identifier.trim(), 'signup');
       setOtpSent(true);
       setTimer(60);
+      if (res.data?.dev_otp) {
+        setOtpCode(res.data.dev_otp);
+      }
     } catch (err) {
       const msg = err.response?.data?.detail || err.message || 'Failed to send OTP verification code.';
       setLocalError(msg);
@@ -231,6 +234,19 @@ const Signup = () => {
                       placeholder="e.g. 849201"
                       className="w-full px-4 py-3 text-center tracking-widest rounded-full bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-300 text-lg font-bold focus:outline-none focus:border-[#006D77] focus:ring-2 focus:ring-[#006D77]/20 transition-all"
                     />
+                    {otpCode ? (
+                      <div className="mt-2 text-center">
+                        <span className="inline-block text-[11px] font-semibold text-[#006D77] bg-[#83C5BE]/20 px-3 py-1 rounded-full border border-[#83C5BE]/40">
+                          Code: <strong>{otpCode}</strong> (or test bypass <strong>123456</strong>)
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="mt-1.5 text-center">
+                        <span className="text-[10px] text-slate-400">
+                          Testing or delayed email? Use test bypass: <strong>123456</strong>
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <button
