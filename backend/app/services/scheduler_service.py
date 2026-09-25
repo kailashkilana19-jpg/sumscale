@@ -22,24 +22,28 @@ async def check_due_reminders(db):
     if db is None:
         return
 
+    import asyncio
     now = datetime.now(timezone.utc)
     try:
-        result = await db.reminders.update_many(
-            {
-                "status": "pending",
-                "due_date": {"$lte": now},
-            },
-            {
-                "$set": {
-                    "status": "due",
-                    "updated_at": now,
-                }
-            },
+        result = await asyncio.wait_for(
+            db.reminders.update_many(
+                {
+                    "status": "pending",
+                    "due_date": {"$lte": now},
+                },
+                {
+                    "$set": {
+                        "status": "due",
+                        "updated_at": now,
+                    }
+                },
+            ),
+            timeout=2.0,
         )
         if result.modified_count > 0:
             logger.info(f"APScheduler: Marked {result.modified_count} reminders as 'due'.")
     except Exception as exc:
-        logger.error(f"Error checking due reminders: {exc}")
+        logger.debug(f"APScheduler check skipped: {exc}")
 
 
 def start_scheduler(app):

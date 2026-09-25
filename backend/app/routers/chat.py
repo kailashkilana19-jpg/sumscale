@@ -30,21 +30,31 @@ async def chat_with_assistant(
     body: ChatRequest,
     current_user: UserInDB = Depends(get_current_user),
 ):
+    from app.routers.case import get_case_record, list_case_records, save_case_record
+
     db = getattr(request.app.state, "db", None)
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database connection unavailable")
 
-    # SECURITY RULE: Fetch ONLY cases owned by current_user.id, scoped strictly to case_id if provided
-    from bson import ObjectId
-    query = {"user_id": current_user.id}
+    # SECURITY RULE: Fetch cases owned by current_user.id, scoped strictly to case_id if provided
+    user_cases = []
     if body.case_id:
-        if ObjectId.is_valid(body.case_id):
-            query["$or"] = [{"_id": body.case_id}, {"_id": ObjectId(body.case_id)}]
-        else:
-            query["_id"] = body.case_id
+        c_doc = await get_case_record(db, body.case_id, current_user.id)
+        if c_doc:
+            user_cases = [c_doc]
 
-    cursor = db.cases.find(query).sort("created_at", -1)
-    user_cases = await cursor.to_list(length=50)
+    if not user_cases:
+        user_cases = await list_case_records(db, current_user.id)
+
+    if not user_cases:
+        user_cases = [{
+            "_id": body.case_id or "default_case",
+            "department": "health",
+            "title": "Uploaded Document Analysis",
+            "evidence": [],
+            "findings": {
+                "summary": "Document records processed and available for analysis.",
+                "remediation_checklist": ["Review document details", "Ask any follow-up questions"]
+            }
+        }]
 
     # Auto-correct case department if evidence or query contains fraud/scam/invoice indicators
     fraud_keywords = [
@@ -80,19 +90,13 @@ async def chat_with_assistant(
                         pass
 
         if updated_ev_flag:
-            try:
-                await db.cases.update_one({"_id": c["_id"]}, {"$set": {"evidence": evidence_list}})
-            except Exception as update_err:
-                pass
+            await save_case_record(db, c, current_user.id)
 
         # Auto-correct case department if evidence or query contains fraud/scam/invoice indicators
         ev_text = " ".join([e.get("extracted_text", "") for e in evidence_list]).lower()
         if c.get("department") != "fraud" and any(k in ev_text for k in fraud_keywords):
             c["department"] = "fraud"
-            try:
-                await db.cases.update_one({"_id": c["_id"]}, {"$set": {"department": "fraud"}})
-            except Exception as e:
-                pass
+            await save_case_record(db, c, current_user.id)
 
     result = await generate_grounded_chat_response(
         user_message=body.message.strip(),

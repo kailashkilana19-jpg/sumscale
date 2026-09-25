@@ -49,7 +49,7 @@ const Navbar = () => {
   }, []);
 
   return (
-    <div className="w-full px-3 sm:px-4 pt-3 pb-1 sticky top-0 z-50">
+    <div className="w-full px-3 sm:px-4 pt-3 pb-2 sticky top-0 z-50 bg-[#EDF6F9]/85 backdrop-blur-md">
       <header className="max-w-6xl mx-auto rounded-full bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-xs px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between">
         {/* Lowercase Bold Logo with Brand Icon */}
         <Link to="/" className="flex items-center space-x-2 shrink-0 group">

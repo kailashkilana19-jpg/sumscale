@@ -20,6 +20,7 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 
 # --- File Uploads & Magic Detection ---
+pypdf>=5.0.0
 python-multipart==0.0.20
 python-magic>=0.4.27; sys_platform != 'win32'
 python-magic-bin>=0.4.14; sys_platform == 'win32'

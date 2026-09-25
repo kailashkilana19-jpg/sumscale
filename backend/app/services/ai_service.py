@@ -66,12 +66,13 @@ def get_groq_client():
     return _groq_client
 
 
-# Groq model — llama-3.3-70b-versatile gives best quality on free tier (14,400 req/day)
+# Groq model — fast and accurate models supported on current Groq API
 GROQ_MODELS = [
+    "qwen/qwen3.8-27b",
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
-    "mixtral-8x7b-32768",
-    "gemma2-9b-it",
 ]
 GEMINI_TEXT_MODEL = "gemini-2.0-flash"
 

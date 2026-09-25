@@ -362,6 +362,7 @@ const CaseReport = () => {
     if (!textToSend) setInputMessage('');
     setSending(true);
 
+    let userPrompt = text;
     let uploadedNames = [];
     let hasVoiceNote = false;
 
@@ -391,7 +392,7 @@ const CaseReport = () => {
       }
 
       // 2. Format user message prompt (include file context in the query)
-      let userPrompt = text;
+      userPrompt = text;
       const imageAttachments = currentFiles
         .filter((f) => f.type?.startsWith('image/'))
         .map((f) => ({ name: f.name, previewUrl: f.previewUrl || null }));

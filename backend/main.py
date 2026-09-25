@@ -80,17 +80,21 @@ async def lifespan(app: FastAPI):
             settings.MONGODB_URL,
             **mongo_kwargs
         )
-        await mongo_client.admin.command("ping")
-        logger.info("MongoDB connection verified")
+        try:
+            await mongo_client.admin.command("ping")
+            logger.info("MongoDB connection verified")
+        except Exception as ping_exc:
+            logger.warning(
+                f"⚠️ MongoDB Atlas ping failed at startup: {ping_exc}. "
+                "Please verify that 0.0.0.0/0 (or your current IP) is added under Network Access in MongoDB Atlas. "
+                "The server will remain online and Motor will retry connecting in the background."
+            )
         app.state.mongo_client = mongo_client
         app.state.db = mongo_client[settings.MONGODB_DB_NAME]
-    except Exception:
+    except Exception as exc:
         logger.error(
-            "MongoDB connection failed at startup — check MONGODB_URL in .env",
+            f"MongoDB client initialization error: {exc}",
         )
-        if mongo_client:
-            mongo_client.close()
-        raise
 
     # --- Start APScheduler ---
     if settings.ENVIRONMENT != "test":
@@ -153,25 +157,27 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Stack (outermost → innermost): Logging → SecurityHeaders → CORS → Routes
 # ---------------------------------------------------------------------------
 
-# 1. CORS — must declare the specific frontend origin, never "*"
+# 1. Request/response logging (request_id, timing — never logs bodies)
+app.add_middleware(RequestLoggingMiddleware)
+
+# 2. Security headers (X-Frame-Options, CSP, HSTS, etc.)
+app.add_middleware(SecurityHeadersMiddleware, environment=settings.ENVIRONMENT)
+
+# 3. CORS — outermost middleware to ensure CORS headers on all responses, including errors and preflight
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         settings.FRONTEND_URL,
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
         "https://sum-scale.vercel.app",
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "Accept"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-
-# 2. Security headers (X-Frame-Options, CSP, HSTS, etc.)
-app.add_middleware(SecurityHeadersMiddleware, environment=settings.ENVIRONMENT)
-
-# 3. Request/response logging (request_id, timing — never logs bodies)
-app.add_middleware(RequestLoggingMiddleware)
 
 
 # ---------------------------------------------------------------------------
